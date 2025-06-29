@@ -4,6 +4,13 @@
 #include <DallasTemperature.h>
 #include "esp_http_server.h"
 
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+#include "AsyncEmailServer.h"
+
+
 // ========== CONFIGURATION ========== //
 #define DEBUG 1
 #if DEBUG
@@ -209,6 +216,12 @@ void startControlServer() {
   }
 }
 
+void sendAlert() {
+  char body[64];
+  snprintf(body, sizeof(body), "Nhiệt độ vượt ngưỡng: %.2f độ ", currentTemp);
+  sendEmail("Temp Alert", body);
+}
+
 // ========== SETUP & LOOP ========== //
 void setup() {
   Serial.begin(115200);
@@ -227,15 +240,46 @@ void setup() {
   startControlServer();
   currentTemp = sensors.getTempCByIndex(0);
   lastTempUpdate = millis();
+
+  // I2C trên GPIO21 (SDA) và GPIO20 (SCL)
+  Wire.begin(21, 2);
+
+  // Khởi LCD
+  lcd.init();
+  lcd.backlight();
 }
 
+unsigned long lastAlert40 = 0;
+unsigned long lastAlert50 = 0;
+unsigned long lastAlert60 = 0;
 void loop() {
   // Đọc nhiệt độ mới từ cảm biến mỗi 2 giây
   if (millis() - lastTempUpdate > 2000) {
     sensors.requestTemperatures();             // Gửi lệnh lấy nhiệt độ
     currentTemp = sensors.getTempCByIndex(0);  // Đọc kết quả
-    lastTempUpdate = millis();
-    DEBUG_LOG("[TEMP] %.2f C\n", currentTemp);
+    unsigned long now = millis();
+    lastTempUpdate = now;
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Temp: ");
+    lcd.print(currentTemp, 2);
+    lcd.print(" C");
+
+    if (currentTemp > 60.0 && now - lastAlert60 >= 60UL * 1000) {
+      sendAlert();
+      lastAlert60 = now;
+    }
+    // 2. Nếu trên 50°C → 5 phút
+    else if (currentTemp > 50.0 && now - lastAlert50 >= 5UL * 60 * 1000) {
+      sendAlert();
+      lastAlert50 = now;
+    }
+    // 3. Nếu trên 40°C → 1 giờ
+    else if (currentTemp > 40.0 && now - lastAlert40 >= 60UL * 60 * 1000) {
+      sendAlert();
+      lastAlert40 = now;
+    }
   }
   delay(10);
 }
