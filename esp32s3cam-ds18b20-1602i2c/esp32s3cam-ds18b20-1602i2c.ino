@@ -272,7 +272,7 @@ void loop() {
     lcd.print(currentTemp, 2);
     lcd.print(" C");
 
-    if (currentTemp > 60.0) {
+    if (currentTemp > 60.0 && (int) currentTemp != 85) {
       unsigned long now = millis();
       if (now - lastAlert60 >= 60UL * 1000) {
         DEBUG_LOG("[ALERT] Temp = %.2f C -> Gửi mail lúc %lu ms\n", currentTemp, now);
