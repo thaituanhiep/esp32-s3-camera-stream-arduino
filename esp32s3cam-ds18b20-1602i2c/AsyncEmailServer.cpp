@@ -9,7 +9,7 @@
 // Thông tin tài khoản Gmail
 #define EMAIL_SENDER "hawyscloud@gmail.com"
 #define EMAIL_PASSWORD "urtt anmc dpiv wdnv"
-#define EMAIL_RECIPIENT "thaituanhiep.1231996@gmail.com"
+#define EMAIL_RECIPIENT "hiepthai12@gmail.com"
 
 SMTPSession smtp;
 

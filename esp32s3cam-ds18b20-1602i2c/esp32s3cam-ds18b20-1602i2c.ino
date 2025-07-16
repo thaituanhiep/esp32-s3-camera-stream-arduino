@@ -249,9 +249,15 @@ void setup() {
   lcd.backlight();
 }
 
-unsigned long lastAlert40 = 0;
-unsigned long lastAlert50 = 0;
-unsigned long lastAlert60 = 0;
+void sendAlertTask(void *param) {
+  DEBUG_LOG("[TASK] Đang gửi email cảnh báo...\n");
+  sendAlert();
+  DEBUG_LOG("[TASK] Đã gửi xong email!\n");
+  vTaskDelete(NULL);
+}
+
+
+unsigned long lastAlert60 = -60000UL;
 void loop() {
   // Đọc nhiệt độ mới từ cảm biến mỗi 2 giây
   if (millis() - lastTempUpdate > 2000) {
@@ -266,19 +272,27 @@ void loop() {
     lcd.print(currentTemp, 2);
     lcd.print(" C");
 
-    if (currentTemp > 60.0 && now - lastAlert60 >= 60UL * 1000) {
-      sendAlert();
-      lastAlert60 = now;
-    }
-    // 2. Nếu trên 50°C → 5 phút
-    else if (currentTemp > 50.0 && now - lastAlert50 >= 5UL * 60 * 1000) {
-      sendAlert();
-      lastAlert50 = now;
-    }
-    // 3. Nếu trên 40°C → 1 giờ
-    else if (currentTemp > 40.0 && now - lastAlert40 >= 60UL * 60 * 1000) {
-      sendAlert();
-      lastAlert40 = now;
+    if (currentTemp > 60.0) {
+      unsigned long now = millis();
+      if (now - lastAlert60 >= 60UL * 1000) {
+        DEBUG_LOG("[ALERT] Temp = %.2f C -> Gửi mail lúc %lu ms\n", currentTemp, now);
+
+        xTaskCreatePinnedToCore(
+          sendAlertTask,
+          "SendAlertTask",
+          8192,
+          NULL,
+          1,
+          NULL,
+          0  // Core 0 để tránh xung đột WiFi
+        );
+
+        lastAlert60 = now;
+      } else {
+        DEBUG_LOG("[WAIT] Temp = %.2f C nhưng chưa đủ 60s (còn %lu ms)\n",
+                  currentTemp,
+                  60UL * 1000 - (now - lastAlert60));
+      }
     }
   }
   delay(10);
