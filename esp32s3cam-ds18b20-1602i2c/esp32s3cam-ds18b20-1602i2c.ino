@@ -28,7 +28,6 @@ const char *pass = "12345678";
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
 volatile float currentTemp = NAN;
-uint32_t lastTempUpdate = 0;
 
 // ----- Camera Pin Definitions ----- //
 #define CAM_PIN_PWDN -1
@@ -71,7 +70,7 @@ static camera_config_t cam = {
   .pixel_format = PIXFORMAT_JPEG,
   .frame_size = FRAMESIZE_SVGA,
   .jpeg_quality = 10,
-  .fb_count = 2,
+  .fb_count = 3,
   .grab_mode = CAMERA_GRAB_LATEST
 };
 
@@ -218,8 +217,8 @@ void startControlServer() {
 
 void sendAlert() {
   char body[64];
-  snprintf(body, sizeof(body), "Nhiệt độ vượt ngưỡng: %.2f độ ", currentTemp);
-  sendEmail("Temp Alert", body);
+  snprintf(body, sizeof(body), "The current temperature has reached %.0f°C, which exceeds the safety threshold. Immediate action may be required.", currentTemp);
+  sendEmail("Temperature is too high! Immediate attention required.", body);
 }
 
 // ========== SETUP & LOOP ========== //
@@ -232,6 +231,8 @@ void setup() {
     DEBUG_LOG("[CAMERA] Init failed!\n");
     while (true) delay(1000);
   }
+  sensor_t *s = esp_camera_sensor_get();
+  s->set_vflip(s, 1);     // Lật dọc nếu hình bị lộn ngược
   WiFi.begin(ssid, pass);
   DEBUG_LOG("[WiFi] Connecting...\n");
   while (WiFi.status() != WL_CONNECTED) delay(500);
@@ -239,7 +240,6 @@ void setup() {
   startCameraServer();
   startControlServer();
   currentTemp = sensors.getTempCByIndex(0);
-  lastTempUpdate = millis();
 
   // I2C trên GPIO21 (SDA) và GPIO20 (SCL)
   Wire.begin(21, 2);
@@ -260,40 +260,37 @@ void sendAlertTask(void *param) {
 unsigned long lastAlert60 = -60000UL;
 void loop() {
   // Đọc nhiệt độ mới từ cảm biến mỗi 2 giây
-  if (millis() - lastTempUpdate > 2000) {
-    sensors.requestTemperatures();             // Gửi lệnh lấy nhiệt độ
-    currentTemp = sensors.getTempCByIndex(0);  // Đọc kết quả
+  sensors.requestTemperatures();             // Gửi lệnh lấy nhiệt độ
+  currentTemp = sensors.getTempCByIndex(0);  // Đọc kết quả
+  unsigned long now = millis();
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Temp: ");
+  lcd.print(currentTemp, 2);
+  lcd.print(" C");
+
+  if (currentTemp > 45.0 && (int)currentTemp != 85) {
     unsigned long now = millis();
-    lastTempUpdate = now;
+    if (now - lastAlert60 >= 60UL * 1000) {
+      DEBUG_LOG("[ALERT] Temp = %.2f C -> Gửi mail lúc %lu ms\n", currentTemp, now);
 
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Temp: ");
-    lcd.print(currentTemp, 2);
-    lcd.print(" C");
+      xTaskCreatePinnedToCore(
+        sendAlertTask,
+        "SendAlertTask",
+        8192,
+        NULL,
+        1,
+        NULL,
+        0
+      );
 
-    if (currentTemp > 60.0 && (int) currentTemp != 85) {
-      unsigned long now = millis();
-      if (now - lastAlert60 >= 60UL * 1000) {
-        DEBUG_LOG("[ALERT] Temp = %.2f C -> Gửi mail lúc %lu ms\n", currentTemp, now);
-
-        xTaskCreatePinnedToCore(
-          sendAlertTask,
-          "SendAlertTask",
-          8192,
-          NULL,
-          1,
-          NULL,
-          0  // Core 0 để tránh xung đột WiFi
-        );
-
-        lastAlert60 = now;
-      } else {
-        DEBUG_LOG("[WAIT] Temp = %.2f C nhưng chưa đủ 60s (còn %lu ms)\n",
-                  currentTemp,
-                  60UL * 1000 - (now - lastAlert60));
-      }
+      lastAlert60 = now;
+    } else {
+      DEBUG_LOG("[WAIT] Temp = %.2f C nhưng chưa đủ 60s (còn %lu ms)\n",
+                currentTemp,
+                60UL * 1000 - (now - lastAlert60));
     }
   }
-  delay(10);
+  delay(2000);
 }

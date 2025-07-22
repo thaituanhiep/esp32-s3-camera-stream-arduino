@@ -30,7 +30,7 @@ void sendEmail(const char *subject, const char *body) {
 
   // Thiết lập nội dung email
   SMTP_Message message;
-  message.sender.name     = "ESP32 Sender";
+  message.sender.name     = "ESP32 SEM 1 ALERT";
   message.sender.email    = EMAIL_SENDER;
   message.subject         = subject;
   message.text.content    = body;
