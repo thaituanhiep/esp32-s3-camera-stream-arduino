@@ -9,6 +9,7 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 #include "AsyncEmailServer.h"
+#define ISD1820_PLAYL_PIN 20
 
 
 // ========== CONFIGURATION ========== //
@@ -215,9 +216,16 @@ void startControlServer() {
   }
 }
 
+void playISD1820() {
+  digitalWrite(ISD1820_PLAYL_PIN, LOW);   // Kích phát
+  delay(500);                             // Giữ mức thấp một lúc
+  digitalWrite(ISD1820_PLAYL_PIN, HIGH);  // Dừng phát
+}
+
 void sendAlert() {
   char body[64];
   snprintf(body, sizeof(body), "The current temperature has reached %.0f°C, which exceeds the safety threshold. Immediate action may be required.", currentTemp);
+  playISD1820();
   sendEmail("Temperature is too high! Immediate attention required.", body);
 }
 
@@ -247,6 +255,9 @@ void setup() {
   // Khởi LCD
   lcd.init();
   lcd.backlight();
+
+  pinMode(ISD1820_PLAYL_PIN, OUTPUT);
+  digitalWrite(ISD1820_PLAYL_PIN, HIGH);
 }
 
 void sendAlertTask(void *param) {
